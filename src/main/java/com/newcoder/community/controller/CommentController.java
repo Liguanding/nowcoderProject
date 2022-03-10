@@ -16,6 +16,9 @@ import org.springframework.web.bind.annotation.RequestMethod;
 
 import java.util.Date;
 
+import static com.newcoder.community.util.CommunityConstant.ENTITY_TYPE_POST;
+import static com.newcoder.community.util.CommunityConstant.TOPIC_PUBLISH;
+
 @Controller
 @RequestMapping(path = "/comment")
 public class CommentController {
@@ -53,6 +56,19 @@ public class CommentController {
             event.setEntityUserId(target.getUserId());
         }
         eventProducer.fireEvent(event);
+
+        //如果是评论帖子
+        if(comment.getEntityType() == CommunityConstant.ENTITY_TYPE_POST){
+            //触发发帖事件
+            event = new Event()
+                .setTopic(CommunityConstant.TOPIC_PUBLISH)
+                .setUserId(comment.getUserId())
+                .setEntityType(ENTITY_TYPE_POST)
+                .setEntityId(discussPostId);
+
+            eventProducer.fireEvent(event);
+        }
+
 
         return "redirect:/discuss/detail/" + discussPostId;
     }
