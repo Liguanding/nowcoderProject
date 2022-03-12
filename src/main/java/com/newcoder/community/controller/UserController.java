@@ -1,14 +1,19 @@
 package com.newcoder.community.controller;
 
+import com.aliyun.oss.OSS;
+import com.aliyun.oss.OSSClientBuilder;
 import com.newcoder.community.annotation.LoginRequired;
 import com.newcoder.community.entity.User;
 import com.newcoder.community.service.FollowService;
 import com.newcoder.community.service.LikeService;
+import com.newcoder.community.service.OssService;
 import com.newcoder.community.service.UserService;
 import com.newcoder.community.util.CommunityConstant;
 import com.newcoder.community.util.CommunityUtil;
+import com.newcoder.community.util.ConstantPropertiesUtils;
 import com.newcoder.community.util.HostHolder;
 import org.apache.commons.lang3.StringUtils;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,14 +23,12 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import javax.servlet.ServletOutputStream;
 import javax.servlet.http.HttpServletResponse;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.Map;
 
 @Controller
@@ -55,12 +58,79 @@ public class UserController {
     @Autowired
     private FollowService followService;
 
+    @Autowired
+    private OssService ossService;
+
     @LoginRequired
     @RequestMapping(path = "/setting",method = RequestMethod.GET)
-    public String getSettingPage(){
+    public String getSettingPage(Model model){
+
         return "/site/setting";
     }
 
+    @LoginRequired
+    @RequestMapping(path = "/upload/oss",method = RequestMethod.POST)
+    public String uploadHeaderOss(MultipartFile headerImage, Model model, RedirectAttributes attr){
+        if(headerImage == null){
+            model.addAttribute("error","您还没有选择图片");
+            return "/site/setting";
+        }
+
+
+        String endpoint = ConstantPropertiesUtils.END_POINT;
+        String accessKeyId = ConstantPropertiesUtils.ACCESS_KEY_ID;
+        String accessKeySecret = ConstantPropertiesUtils.ACCESS_KEY_SECRET;
+        String bucketName = ConstantPropertiesUtils.HEADER_BUCKET_NAME;
+
+        try {
+            // 创建OSS实例。
+            OSS ossClient = new OSSClientBuilder().build(endpoint, accessKeyId, accessKeySecret);
+
+            //获取上传文件输入流
+            InputStream inputStream = headerImage.getInputStream();
+            //获取文件名称
+            String fileName = headerImage.getOriginalFilename();
+
+            //1 在文件名称里面添加随机唯一的
+            fileName = CommunityUtil.generateUUID() + fileName;
+
+            //2 把文件按照日期进行分类
+            //获取当前日期(用导入依赖的工具类）
+            //   2019/11/12
+            String datePath = new DateTime().toString("yyyy/MM/dd");
+            //拼接
+            fileName = datePath + "/" + fileName;
+
+            //调用oss方法实现上传
+            //第一个参数  Bucket名称
+            //第二个参数  上传到oss文件路径和文件名称   aa/bb/1.jpg
+            //第三个参数  上传文件输入流
+            ossClient.putObject(bucketName, fileName, inputStream);
+
+            // 关闭OSSClient。
+            ossClient.shutdown();
+            // 获取当前用户
+            User user = hostHolder.getUser();
+
+            //把上传之后文件路径返回
+            //需要把上传到阿里云oss路径手动拼接出来
+            //  https://edu-guli-1010.oss-cn-beijing.aliyuncs.com/01.jpg
+            String headerUrl = "https://" + bucketName + "." + endpoint + "/" + fileName;
+
+            int rows = userService.updateHeader(user.getId(), headerUrl);
+            https://community-header-lgd.oss-cn-beijing.aliyuncs.com/2022/03/12/13df2c846e624f98a3c347e28f9eea171.png
+            if (rows > 0) {
+                // 重定向消息提示
+                attr.addFlashAttribute("uploadMsg", "上传头像成功");
+            }
+            return "redirect:/user/setting";
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    //废弃
     @LoginRequired
     @RequestMapping(path = "/upload",method = RequestMethod.POST)
     public String uploadHeader(MultipartFile headerImage, Model model){
@@ -92,6 +162,7 @@ public class UserController {
         return "redirect:/index";
     }
 
+    //废弃
     @RequestMapping(path = "/header/{fileName}",method = RequestMethod.GET)
     public void getHeader(@PathVariable("fileName") String fileName, HttpServletResponse response){
         //服务器存放路径
